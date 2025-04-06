@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import axios from "axios";
 import { User, MessageCircle, X, Heart } from "lucide-react";
 import "./App.css";
 
@@ -6,81 +7,156 @@ const PROFILE_SELECTION = "PROFILE_SELECTION";
 const MATCHES_LIST = "MATCHES_LIST";
 const CHAT_SCREEN = "CHAT_SCREEN";
 
+const getImageUrl = (imgId) => `http://localhost:8080/images/${imgId}`;
+
+const Spinner = () => {
+  return (
+    <div className="animate-pulse">
+      <p>Loading</p>
+    </div>
+  );
+};
+
 const ProfileSelector = () => {
+  const [profile, setProfile] = useState(undefined);
+  const [loading, setLoading] = useState(true);
+
+  // Get user profile
+  const getUserProfile = async () => {
+    !!profile && setLoading(true);
+
+    try {
+      const userProfile = await axios.get(
+        "http://localhost:8080/profile/random",
+        {
+          headers: {
+            Accept: "*",
+          },
+        },
+      );
+
+      console.log(userProfile.data);
+
+      setProfile(userProfile.data);
+    } catch (e) {
+      throw new Error("Failed to fetch data from api", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Get Matched
+  const onSendLike = async (profileId) => {
+    await axios.post(
+      "http://localhost:8080/matches",
+      {
+        profileId: profileId,
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      },
+    );
+  };
+
+  useEffect(() => {
+    getUserProfile();
+  }, []);
+
   return (
     <div className="overflow-hidden rounded-lg bg-white shadow-lg">
-      <div className="relative">
-        <img
-          alt={"tty"}
-          src={
-            "http://localhost:8080/images/fcf41221-54b5-44c2-8b87-383c9254d681.jpg"
-          }
-        />
-        <div className="absolute right-0 bottom-0 left-0 bg-gradient-to-t from-black p-4 text-white">
-          <h2 className="text-3xl font-bold">Foo Bar, 30</h2>
-        </div>
-      </div>
-      <div className="p-4">
-        <p className="text-gray-600">Hi, I'm debajit Deb</p>
-      </div>
-      <div className="flex justify-center space-x-4 p-4">
-        <button
-          className="rounded-full bg-red-500 p-4 text-white hover:bg-red-700"
-          onClick={(e) => console.log("swipe left", e)}
-        >
-          <X size={24} />
-        </button>
-        <button
-          className="rounded-full bg-green-500 p-4 text-white hover:bg-green-700"
-          onClick={(e) => console.log("Swipe right", e)}
-        >
-          <Heart size={24} />
-        </button>
-      </div>
+      {loading || profile === undefined ? (
+        <Spinner />
+      ) : (
+        <>
+          <div className="relative">
+            <img alt={"tty"} src={getImageUrl(profile.imageUrl)} />
+            <div className="absolute right-0 bottom-0 left-0 bg-gradient-to-t from-black p-4 text-white">
+              <h2 className="text-3xl font-bold">
+                {profile.firstName} {profile.lastName}
+                {","} {profile.age}
+              </h2>
+            </div>
+          </div>
+          <div className="p-4">
+            <p className="text-gray-600">{profile.bio}</p>
+          </div>
+          <div className="flex justify-center space-x-4 p-4">
+            <button
+              className="rounded-full bg-red-500 p-4 text-white hover:bg-red-700"
+              onClick={getUserProfile}
+            >
+              <X size={24} />
+            </button>
+            <button
+              className="rounded-full bg-green-500 p-4 text-white hover:bg-green-700"
+              onClick={(e) => {
+                e.preventDefault();
+                onSendLike(profile.id);
+                getUserProfile();
+              }}
+            >
+              <Heart size={24} />
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 };
 
 const MatchesList = ({ onSelectMatch }) => {
-  return (
+  const [matchesList, setMatchesList] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // get all matches
+  const getAllMatches = async () => {
+    setLoading(true);
+
+    try {
+      const matches = (await axios.get("http://localhost:8080/matches")).data;
+
+      setMatchesList(matches);
+    } catch (e) {
+      throw new Error("Unable to fetch matches", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    getAllMatches();
+  }, []);
+
+  return loading || matchesList === undefined ? (
+    <Spinner />
+  ) : (
     <div className={"rounded-lg p-4 shadow-lg"}>
       <h2 className={"mb-4 text-2xl font-bold"}>Matches</h2>
       <ul>
-        {[
-          {
-            id: 1,
-            firstName: "Debajit",
-            lastName: "Deb",
-            imageUrl:
-              "http://localhost:8080/images/fcf41221-54b5-44c2-8b87-383c9254d681.jpg",
-            age: 27,
-          },
-          {
-            id: 2,
-            firstName: "Debajit",
-            lastName: "Deb",
-            imageUrl:
-              "http://localhost:8080/images/767e0e5c-66ba-45f7-8019-35822f7d1a92.jpg",
-            age: 27,
-          },
-        ].map((match) => {
+        {matchesList.map((match) => {
           return (
             <li key={match.id} className={"mb-3"}>
-              <buttom
+              <button
                 className={"item-center flex w-full rounded hover:bg-gray-100"}
-                onClick={onSelectMatch}
+                onClick={() => {
+                  localStorage.setItem("CONV_ID", match.conversationId);
+                  localStorage.setItem("PROFILE_DATA", JSON.stringify(match.profile))
+                  onSelectMatch();
+                }}
               >
                 <img
-                  src={match.imageUrl}
-                  alt={match.firstName + " " + match.lastName}
+                  src={getImageUrl(match.profile.imageUrl)}
+                  alt={match.profile.firstName + " " + match.profile.lastName}
                   className={"mr-3 h-16 w-16 rounded-full"}
                 />
                 <span>
                   <h3 className={"font-bold"}>
-                    {match.firstName} {match.lastName}
+                    {match.profile.firstName} {match.profile.lastName}
                   </h3>
                 </span>
-              </buttom>
+              </button>
             </li>
           );
         })}
@@ -90,57 +166,102 @@ const MatchesList = ({ onSelectMatch }) => {
 };
 
 const ChatScreen = () => {
-  const [input, setInput] = useState('');
+  const [conversationList, setConversationList] = useState([]);
+  const [input, setInput] = useState("");
 
-  const onSend = () => {
-    if (input.trim() !== '') {
+  const onSendMessage = async (message, conversationId) => {
+    const res = await axios.post(
+      `http://localhost:8080/conversations/${conversationId}`,
+      {
+        messageText: message,
+        authorId: "user",
+        messageTime: "2025-04-06T00:11:12.134Z",
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      },
+    );
+
+    console.log("RESp => ", res);
+  };
+
+  const onSend = async () => {
+    if (input.trim() !== "") {
       console.log("sending message", input.trim());
-      setInput('');
+
+      setInput("");
+
+      await onSendMessage(input, localStorage.getItem("CONV_ID"));
+
+      setTimeout(() => getConversations(localStorage.getItem("CONV_ID")), 1000);
     }
-  }
+  };
+
+  const getConversations = async (conversationId) => {
+    const conversations = (
+      await axios.get(`http://localhost:8080/conversations/${conversationId}`)
+    ).data;
+    console.log(conversations);
+
+    setConversationList([...conversations.messages]);
+  };
+
+  useEffect(() => {
+    const convId = localStorage.getItem("CONV_ID");
+    console.log(convId);
+
+    getConversations(convId);
+  }, []);
 
   return (
     <div className={"rounded-lg p-4 shadow-lg"}>
-      <h2 className={'text-2xl font-bold mb-4'}>Chat with Debajit</h2>
-        <div className="border rounded overflow-y-auto mb-4 p-2">
-        {[
-          "Hi", 
-          "How are you?",
-          "How are you?",
-          "How are you?",
-          "How are you?",
-          "How are you?",
-          "How are you?",
-          "How are you?",
-          "How are you?",
-        ].map((message, idx) => (
-          <div key={idx}>
-            <div className="mb-4 p-2 rounded bg-gray-100">{message}</div>
+      <h2 className={"mb-4 text-2xl font-bold"}>Chat with {JSON.parse(localStorage.getItem("PROFILE_DATA")).firstName}</h2>
+      <div className="mb-4 h-100 overflow-y-auto rounded border p-2">
+        {conversationList.map((message, idx) => (
+          <div key={message.messageTime}>
+            {message.authorId === "user" ? (
+              <div className="mb-4 rounded bg-blue-300 p-2">
+                {message.messageText}
+              </div>
+            ) : (
+              <div className="mb-4 rounded bg-gray-300 p-2">
+                {message.messageText}
+              </div>
+            )}
           </div>
         ))}
       </div>
       <div className="flex">
-        <input type="text" 
-          className="border flex-1 rounded p-2 mr-2"
+        <input
+          type="text"
+          className="mr-2 flex-1 rounded border p-2"
           placeholder={"Type a message"}
           value={input}
           onChange={(e) => {
             e.preventDefault();
             setInput(e.target.value);
           }}
+          onKeyUp={async (e) => {
+            if (e.key === "Enter") {
+              await onSend();
+            }
+          }}
         />
-        <button className={"bg-blue-500 text-white rounded p-2 bg-gradient-to-bl disabled:bg-gray-500"} 
+        <button
+          className={
+            "rounded bg-blue-500 bg-gradient-to-bl p-2 text-white disabled:bg-gray-500"
+          }
           onClick={onSend}
-          disabled={input === ''}
-          >
-            Send
-          </button>
+          disabled={input === ""}
+        >
+          Send
+        </button>
       </div>
     </div>
   );
 };
-
-
 
 function App() {
   const [selection, setSelection] = useState(PROFILE_SELECTION);
@@ -148,13 +269,13 @@ function App() {
   const renderScreen = (selection) => {
     switch (selection) {
       case PROFILE_SELECTION:
-        return <ProfileSelector />
+        return <ProfileSelector />;
       case MATCHES_LIST:
-        return <MatchesList onSelectMatch={() => setSelection(CHAT_SCREEN)} />
+        return <MatchesList onSelectMatch={() => setSelection(CHAT_SCREEN)} />;
       case CHAT_SCREEN:
-        return <ChatScreen />
+        return <ChatScreen />;
     }
-  }
+  };
 
   return (
     <div className="mx-auto max-w-md">
